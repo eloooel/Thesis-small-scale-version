@@ -1,21 +1,65 @@
 # Data files
 data/adhd200/
+preprocessed_data/
 *.nii
 *.nii.gz
 *.npy
+results/
+
+# Plots and outputs
+*.png
+*.jpg
+*.pdf
+*.svg
 
 # Python
 __pycache__/
 *.py[cod]
 *$py.class
 .pytest_cache/
-.ipynb_checkpoints
+.coverage
+htmlcov/
+.tox/
+.nox/
+.hypothesis/
+.pytest_cache/
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+*.manifest
+*.spec
 
-# Virtual Environment
-venv/
+# Jupyter Notebook
+.ipynb_checkpoints
+*.ipynb
+
+# Environments
+.env
+.venv
 env/
-.env/
+venv/
+ENV/
+env.bak/
+venv.bak/
 
 # IDE
-.vscode/
 .idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
