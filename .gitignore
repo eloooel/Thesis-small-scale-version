@@ -1,0 +1,21 @@
+# Data files
+data/adhd200/
+*.nii
+*.nii.gz
+*.npy
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.ipynb_checkpoints
+
+# Virtual Environment
+venv/
+env/
+.env/
+
+# IDE
+.vscode/
+.idea/
