@@ -63,3 +63,30 @@ venv.bak/
 *.swo
 *~
 .DS_Store
+
+config.py
+credentials.json
+*.key
+*.pem
+*.env
+.env
+
+# Large datasets
+data/raw/
+data/adhd200_full/
+
+# Model checkpoints (often large)
+saved_models/
+
+# Large logs
+logs/
+
+# Runtime cache
+.cache/
+
+# IDE specific settings
+.vscode/settings.json
+.idea/workspace.xml
+
+# Temporary experiment output
+experiments/tmp/
