@@ -1,8 +1,8 @@
 """
-Small-scale test of the GNN-STAN model for ADHD classification.
+Small-scale test of the GNN-STAN model for ADHD classification using local Peking_1 dataset.
 
-This script downloads a small sample of the ADHD-200 dataset (2 subjects)
-and runs a simple test to verify the model works and to estimate resource requirements.
+This script uses a local dataset (2 subjects from Peking_1) and runs a simple test
+to verify the model works and to estimate resource requirements.
 """
 
 import os
@@ -13,6 +13,7 @@ import matplotlib.pyplot as plt
 import time
 import psutil
 from tqdm import tqdm
+import glob
 
 # Add the project root to the Python path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -23,19 +24,65 @@ from src.preprocessing.feature_extraction import FeatureExtractor
 from src.preprocessing.brain_graph import BrainGraphCreator
 from src.models.gnn_stan import GNN_STAN_Classifier
 
-def download_adhd_sample_data():
+def load_local_peking_data(data_dir):
     """
-    Download a small sample from ADHD-200 dataset (2 subjects only)
+    Load the local Peking_1 dataset (2 subjects)
+    
+    Parameters:
+    -----------
+    data_dir : str
+        Path to the Peking_1 dataset directory
+    
+    Returns:
+    --------
+    dict
+        Dictionary containing functional files, subject IDs, and labels
     """
-    print("Downloading sample ADHD-200 data (this might take a few minutes)...")
-    from nilearn import datasets
-    adhd_dataset = datasets.fetch_adhd(n_subjects=2)
+    print(f"Loading local Peking_1 dataset from {data_dir}")
     
-    # Print dataset information
-    print(f"Dataset has {len(adhd_dataset.func)} functional images")
-    print(f"Labels: {adhd_dataset.phenotypic['adhd']}")  # 1 for ADHD, 0 for control
+    # Find all functional MRI files
+    func_pattern = os.path.join(data_dir, "sub-*", "ses-*", "func", "*_task-rest_*.nii.gz")
+    func_files = sorted(glob.glob(func_pattern))
     
-    return adhd_dataset
+    if not func_files:
+        raise FileNotFoundError(f"No functional MRI files found in {data_dir}")
+    
+    # Extract subject IDs from filenames
+    subject_ids = []
+    for func_file in func_files:
+        # Extract subject ID from the file path (sub-XXXXXXX)
+        parts = os.path.normpath(func_file).split(os.sep)
+        for part in parts:
+            if part.startswith("sub-"):
+                subject_ids.append(part)
+                break
+    
+    # For demonstration purposes, we'll use a simple rule for ADHD labels:
+    # Odd numbered subjects = ADHD, Even numbered subjects = Control
+    # You should replace this with actual diagnostic information if available
+    labels = []
+    for subject_id in subject_ids:
+        # Extract the numeric part (remove 'sub-' prefix)
+        subject_num = subject_id.replace('sub-', '')
+        try:
+            # If last digit is odd, classify as ADHD (1), else Control (0)
+            if int(subject_num[-1]) % 2 == 1:
+                labels.append(1)  # ADHD
+            else:
+                labels.append(0)  # Control
+        except:
+            # Default to Control if conversion fails
+            labels.append(0)
+    
+    print(f"Found {len(func_files)} subjects:")
+    for i, (subject, label) in enumerate(zip(subject_ids, labels)):
+        print(f"  {i+1}. {subject}: {'ADHD' if label == 1 else 'Control'}")
+    
+    return {
+        'func': func_files,
+        'subject_ids': subject_ids,
+        'labels': labels
+    }
 
 def measure_resource_usage(func):
     """Decorator to measure time and memory usage of a function"""
@@ -112,8 +159,10 @@ def train_and_evaluate_model(graphs, labels):
     # Get model parameters from the first graph
     if isinstance(graphs[0], dict):
         graph = graphs[0]['static_graph']
+        num_time_points = len(graphs[0]['dynamic_graphs'])
     else:
         graph = graphs[0]
+        num_time_points = 10  # Default
     
     num_node_features = graph.x.shape[1]
     
@@ -121,7 +170,7 @@ def train_and_evaluate_model(graphs, labels):
     model = GNN_STAN_Classifier(
         num_node_features=num_node_features,
         hidden_channels=64,
-        num_time_points=10,  # Adjust based on your dynamic connectivity
+        num_time_points=num_time_points,
         gnn_layers=3,
         gnn_type='gcn',
         use_edge_weights=True,
@@ -159,7 +208,7 @@ def train_and_evaluate_model(graphs, labels):
     
     # Training loop
     model.train()
-    num_epochs = 10
+    num_epochs = 20
     losses = []
     
     print("\nTraining model...")
@@ -186,8 +235,8 @@ def train_and_evaluate_model(graphs, labels):
     plt.xlabel('Epoch')
     plt.ylabel('Loss')
     plt.grid(True)
-    plt.savefig('training_loss.png')
-    print("Training loss plot saved to 'training_loss.png'")
+    plt.savefig('results/training_loss.png')
+    print("Training loss plot saved to 'results/training_loss.png'")
     
     # Evaluation
     model.eval()
@@ -218,8 +267,22 @@ def train_and_evaluate_model(graphs, labels):
                     plt.imshow(spatial_weights.cpu().numpy(), cmap='hot', aspect='auto')
                     plt.colorbar()
                     plt.title('Spatial Attention Weights')
-                    plt.savefig('spatial_attention.png')
-                    print("Spatial attention weights plot saved to 'spatial_attention.png'")
+                    plt.savefig('results/spatial_attention.png')
+                    print("Spatial attention weights plot saved to 'results/spatial_attention.png'")
+            
+            if 'temporal_weights' in attention_weights:
+                temporal_weights = attention_weights['temporal_weights']
+                
+                # Plot temporal attention weights if possible
+                if isinstance(temporal_weights, torch.Tensor):
+                    plt.figure(figsize=(12, 6))
+                    plt.plot(temporal_weights.squeeze().cpu().numpy(), marker='o')
+                    plt.title('Temporal Attention Weights')
+                    plt.xlabel('Time Window')
+                    plt.ylabel('Attention Weight')
+                    plt.grid(True)
+                    plt.savefig('results/temporal_attention.png')
+                    print("Temporal attention weights plot saved to 'results/temporal_attention.png'")
     
     return model, losses, test_acc
 
@@ -235,22 +298,25 @@ def visualize_connectivity_matrices(features):
         plt.title(f"Subject {i+1} - {'ADHD' if feature.get('label', 0) == 1 else 'Control'}")
     
     plt.tight_layout()
-    plt.savefig('connectivity_matrices.png')
-    print("Connectivity matrices plot saved to 'connectivity_matrices.png'")
+    plt.savefig('results/connectivity_matrices.png')
+    print("Connectivity matrices plot saved to 'results/connectivity_matrices.png'")
 
 def main():
     """Main function to run the small-scale test"""
-    print("Starting small-scale GNN-STAN model test for ADHD classification...")
+    print("Starting small-scale GNN-STAN model test for ADHD classification using local Peking dataset...")
     
     # Create output directories
     os.makedirs("preprocessed_data", exist_ok=True)
     os.makedirs("results", exist_ok=True)
     
-    # Download sample data
-    dataset = download_adhd_sample_data()
-    func_files = dataset.func
-    labels = dataset.phenotypic['adhd'].tolist()
-    subject_ids = [f"subject_{i+1}" for i in range(len(func_files))]
+    # Set the path to your local Peking_1 dataset
+    data_dir = "C:/Users/Raphael/OneDrive - ust.edu.ph/Documents/SY 2024-2025/2ND SEM/Thesis/dataset/Peking_1"
+    
+    # Load local dataset
+    dataset = load_local_peking_data(data_dir)
+    func_files = dataset['func']
+    labels = dataset['labels']
+    subject_ids = dataset['subject_ids']
     
     # Step 1: Preprocessing
     print("\n=== Step 1: Preprocessing ===")
