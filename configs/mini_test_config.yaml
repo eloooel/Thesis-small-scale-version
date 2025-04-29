@@ -1,0 +1,76 @@
+# Configuration for a mini test of the GNN-STAN ADHD classification model
+experiment_name: mini_test
+output_dir: results/mini_test
+verbose: true
+random_seed: 42
+
+# Data configuration
+data:
+  data_dir: data/adhd200
+  atlas: schaefer_200
+  n_subjects: 10  # Small sample for quick testing
+  download: true
+  test_size: 0.2
+  random_seed: 42
+
+# Preprocessing configuration
+preprocessing:
+  output_dir: preprocessed_data
+  tr: 2.0
+  motion_correction: true
+  slice_timing_correction: true
+  spatial_normalization: true
+  temporal_filtering: true
+  denoising: true
+  parcellation: true
+
+# Feature extraction configuration
+feature_extraction:
+  connectivity_type: correlation
+  threshold: 0.2
+  dynamic: true
+  window_size: 20
+  step_size: 5
+
+# Brain graph configuration
+brain_graph:
+  threshold: 0.2
+  use_absolute: true
+  self_loops: false
+  use_dynamic: true
+
+# Model configuration
+model:
+  hidden_channels: 64
+  output_dim: 1
+  dropout: 0.1
+  gnn_layers: 2
+  gnn_type: gcn
+  use_edge_weights: true
+  use_dynamic: true
+  bidirectional: true
+
+# Training configuration
+training:
+  batch_size: 1  # Process one graph at a time
+  num_epochs: 20
+  learning_rate: 0.001
+  weight_decay: 1e-5
+  early_stopping_patience: 5
+  use_class_weights: true
+  device: cuda  # Will fall back to CPU if no GPU available
+  save_model: true
+  model_save_dir: saved_models
+
+# Evaluation configuration
+evaluation:
+  metrics:
+    - accuracy
+    - precision
+    - recall
+    - f1_score
+    - roc_auc
+  threshold: 0.5
+  cv_strategy: kfold
+  n_folds: 3
+  stratify_by: site
