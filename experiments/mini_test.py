@@ -17,6 +17,7 @@ import glob
 from sklearn.model_selection import KFold, StratifiedKFold
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score
 from sklearn.svm import SVC
+from src.utils.metrics import calculate_binary_metrics, calculate_cross_validation_metrics, print_metrics_summary
 
 # Add the project root to the Python path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -298,7 +299,7 @@ def run_ablation_study(graphs, labels, use_stan=False):
         
         # Define optimizer and loss function
     # Define optimizer and loss function
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.0005, weight_decay=1e-4)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.0001, weight_decay=1e-4)
     criterion = torch.nn.BCELoss()
 
     # Training loop
@@ -368,7 +369,7 @@ def run_ablation_study(graphs, labels, use_stan=False):
                 loss.backward()
                 
                 # Clip gradients to prevent explosion
-                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=0.5)
                 
                 # Check for NaN gradients
                 has_nan_grad = False
@@ -450,6 +451,204 @@ def run_ablation_study(graphs, labels, use_stan=False):
     print_metrics_summary(cv_metrics)
     
     return cv_metrics
+
+@measure_resource_usage
+def train_and_evaluate_gnn_stan_model(graphs, labels):
+    """Train and evaluate the full GNN-STAN model"""
+    print("\n=== Training and Evaluating GNN-STAN Model ===")
+    
+    # Check if CUDA is available
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    print(f"Using device: {device}")
+    
+    # Get model parameters from the first graph
+    if isinstance(graphs[0], dict):
+        graph = graphs[0]['static_graph']
+    else:
+        graph = graphs[0]
+    
+    num_node_features = graph.x.shape[1]
+    
+    # Get number of time points for dynamic graphs
+    num_time_points = None
+    if isinstance(graphs[0], dict) and 'dynamic_graphs' in graphs[0]:
+        num_time_points = len(graphs[0]['dynamic_graphs'])
+    
+    # Prepare cross-validation
+    kf = StratifiedKFold(n_splits=3, shuffle=True, random_state=42)
+    
+    # Store metrics
+    metrics_list = []
+    
+    # Convert labels to numpy array
+    y = np.array(labels)
+    
+    # Cross-validation
+    for fold, (train_idx, test_idx) in enumerate(kf.split(range(len(graphs)), y)):
+        print(f"\n--- Fold {fold+1} ---")
+        
+        # Initialize GNN-STAN model
+        model = GNN_STAN_Classifier(
+            num_node_features=num_node_features,
+            hidden_channels=32,
+            num_time_points=num_time_points,
+            gnn_layers=2,
+            gnn_type='gcn',
+            use_edge_weights=True,
+            dropout=0.1,
+            use_dynamic=(num_time_points is not None),
+            bidirectional=True
+        ).to(device)
+        
+        # Initialize weights for stability
+        def init_weights(m):
+            if isinstance(m, torch.nn.Linear):
+                torch.nn.init.xavier_uniform_(m.weight)
+                if m.bias is not None:
+                    m.bias.data.fill_(0.01)
+        
+        model.apply(init_weights)
+        
+        # Define optimizer and loss function
+        optimizer = torch.optim.Adam(model.parameters(), lr=0.0001, weight_decay=1e-4)
+        criterion = torch.nn.BCELoss()
+        
+        # Training loop
+        model.train()
+        num_epochs = 20
+        
+        print("Training...")
+        for epoch in range(num_epochs):
+            epoch_loss = 0.0
+            
+            # Train on each sample in the training set
+            for idx in train_idx:
+                train_graph = graphs[idx]
+                train_label = torch.tensor([[float(labels[idx])]], dtype=torch.float).to(device)
+                
+                # Move graph to device
+                if isinstance(train_graph, dict):
+                    if 'static_graph' in train_graph:
+                        train_graph['static_graph'] = train_graph['static_graph'].to(device)
+                    if 'dynamic_graphs' in train_graph:
+                        train_graph['dynamic_graphs'] = [g.to(device) for g in train_graph['dynamic_graphs']]
+                else:
+                    train_graph = train_graph.to(device)
+                
+                optimizer.zero_grad()
+                
+                try:
+                    # Forward pass
+                    output = model(train_graph)
+                    
+                    # Ensure shapes match
+                    if output.shape != train_label.shape:
+                        output = output.view(train_label.shape)
+                    
+                    # Check for NaN values and clip to prevent instability
+                    if torch.isnan(output).any():
+                        print(f"Warning: NaN detected in output. Resetting to 0.5")
+                        output = torch.tensor([[0.5]], device=device, requires_grad=True)
+                    
+                    # Clip values to ensure numerical stability
+                    output = torch.clamp(output, min=1e-7, max=1-1e-7)
+                    
+                    # Compute loss
+                    loss = criterion(output, train_label)
+                    
+                    # Check for NaN loss
+                    if torch.isnan(loss).any():
+                        print(f"Warning: NaN loss detected. Skipping backward pass.")
+                        continue
+                    
+                    epoch_loss += loss.item()
+                    
+                    # Backward pass
+                    loss.backward()
+                    
+                    # Clip gradients to prevent explosion
+                    torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=0.5)
+                    
+                    # Update weights
+                    optimizer.step()
+                    
+                except RuntimeError as e:
+                    print(f"Runtime error during training: {e}")
+                    continue
+            
+            # Average loss for the epoch
+            avg_epoch_loss = epoch_loss / len(train_idx) if len(train_idx) > 0 else float('nan')
+            
+            if (epoch + 1) % 5 == 0:
+                print(f"Epoch {epoch+1}/{num_epochs}, Loss: {avg_epoch_loss:.4f}")
+        
+        # Evaluation
+        model.eval()
+        fold_y_true = []
+        fold_y_pred = []
+        fold_y_score = []
+        
+        with torch.no_grad():
+            for idx in test_idx:
+                test_graph = graphs[idx]
+                test_label = float(labels[idx])
+                fold_y_true.append(test_label)
+                
+                # Move graph to device
+                if isinstance(test_graph, dict):
+                    if 'static_graph' in test_graph:
+                        test_graph['static_graph'] = test_graph['static_graph'].to(device)
+                    if 'dynamic_graphs' in test_graph:
+                        test_graph['dynamic_graphs'] = [g.to(device) for g in test_graph['dynamic_graphs']]
+                else:
+                    test_graph = test_graph.to(device)
+                
+                # Forward pass
+                try:
+                    test_output = model(test_graph)
+                    if test_output.shape != (1, 1):
+                        test_output = test_output.view(1, 1)
+                    
+                    # Check for NaN and replace with 0.5
+                    if torch.isnan(test_output).any():
+                        test_output = torch.tensor([[0.5]], device=device)
+                    
+                    test_score = test_output.item()
+                    test_pred = 1 if test_score > 0.5 else 0
+                    
+                    fold_y_pred.append(test_pred)
+                    fold_y_score.append(test_score)
+                except Exception as e:
+                    print(f"Error during evaluation: {e}")
+                    # Default to 0.5 probability if error occurs
+                    fold_y_pred.append(0)
+                    fold_y_score.append(0.5)
+        
+        # Calculate metrics for this fold
+        metrics = calculate_binary_metrics(
+            np.array(fold_y_true), 
+            np.array(fold_y_pred), 
+            np.array(fold_y_score)
+        )
+        metrics_list.append(metrics)
+        
+        # Handle potential None in roc_auc
+        roc_auc_value = metrics.get('roc_auc')
+        roc_auc_str = f"{roc_auc_value:.4f}" if roc_auc_value is not None else "N/A"
+        
+        print(f"Fold {fold+1} metrics:")
+        print(f"  Accuracy: {metrics['accuracy']:.4f}")
+        print(f"  F1-Score: {metrics['f1_score']:.4f}")
+        print(f"  ROC AUC: {roc_auc_str}")
+    
+    # Calculate overall metrics
+    cv_metrics = calculate_cross_validation_metrics(metrics_list)
+    
+    print("\nGNN-STAN Model Results:")
+    print_metrics_summary(cv_metrics)
+    
+    return model, cv_metrics
+
 
 def compare_models(baseline_metrics, gnn_stan_metrics, gnn_only_metrics):
     """Compare the performance of different models"""
