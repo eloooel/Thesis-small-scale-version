@@ -9,7 +9,7 @@ from torch_geometric.nn import GCNConv, GraphConv, SAGEConv, GATConv, global_mea
 from torch.nn import BatchNorm1d, LayerNorm
 
 
-class StableGNN(torch.nn.Module):
+class GNN(torch.nn.Module):
     """
     Improved Graph Neural Network component with stability enhancements.
     
@@ -48,7 +48,7 @@ class StableGNN(torch.nn.Module):
         **kwargs : dict
             Additional arguments for specific layer types
         """
-        super(StableGNN, self).__init__()
+        super(GNN, self).__init__()
         
         self.num_layers = num_layers
         self.dropout = dropout
@@ -248,7 +248,7 @@ class StableGNNWithPooling(torch.nn.Module):
         super(StableGNNWithPooling, self).__init__()
         
         # GNN for node embeddings with stability enhancements
-        self.gnn = StableGNN(
+        self.gnn = GNN(
             num_node_features=num_node_features,
             hidden_channels=hidden_channels,
             num_layers=num_layers,

@@ -2,7 +2,7 @@
 GNN-STAN model implementations for ADHD classification.
 """
 
-from .gnn import GNN, GNNWithPooling
+from .gnn import GNN, StableGNNWithPooling
 from .stan import STAN, DynamicSTAN
 from .gnn_stan import GNN_STAN, GNN_STAN_Classifier
 
