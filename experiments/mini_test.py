@@ -96,7 +96,6 @@ def load_local_peking_data(data_dir, max_subjects=6):
     }
 
 def measure_resource_usage(func):
-    """Decorator to measure time and memory usage of a function"""
     def wrapper(*args, **kwargs):
         # Start measurements
         start_time = time.time()

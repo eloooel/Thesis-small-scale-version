@@ -12,16 +12,6 @@ class SpatialAttention(nn.Module):
     """
     
     def __init__(self, hidden_dim, attention_dim=None):
-        """
-        Initialize the spatial attention module.
-        
-        Parameters:
-        -----------
-        hidden_dim : int
-            Dimension of hidden features
-        attention_dim : int, optional
-            Dimension of attention space
-        """
         super(SpatialAttention, self).__init__()
         
         if attention_dim is None:
@@ -52,7 +42,7 @@ class SpatialAttention(nn.Module):
         """
         # Compute attention scores
         attention_scores = self.attention_mlp(x)  # Shape: [num_nodes, 1]
-        
+
         # Apply softmax to get attention weights
         attention_weights = F.softmax(attention_scores, dim=0)  # Shape: [num_nodes, 1]
         
@@ -144,24 +134,6 @@ class STAN(nn.Module):
     def __init__(self, hidden_dim, num_time_points, output_dim=1,
                  spatial_attention_dim=None, temporal_attention_dim=None,
                  dropout=0.1):
-        """
-        Initialize the STAN module.
-        
-        Parameters:
-        -----------
-        hidden_dim : int
-            Dimension of hidden features
-        num_time_points : int
-            Number of time points
-        output_dim : int, optional
-            Dimension of output features
-        spatial_attention_dim : int, optional
-            Dimension of spatial attention space
-        temporal_attention_dim : int, optional
-            Dimension of temporal attention space
-        dropout : float, optional
-            Dropout probability
-        """
         super(STAN, self).__init__()
         
         # Spatial attention
@@ -187,28 +159,6 @@ class STAN(nn.Module):
         self.num_time_points = num_time_points
     
     def forward(self, x, batch=None, return_attention=False):
-        """
-        Forward pass through the STAN module.
-        
-        Parameters:
-        -----------
-        x : torch.Tensor
-            Input features
-            If dynamic: shape [batch_size, num_time_points, num_nodes, hidden_dim]
-            If static: shape [num_nodes, hidden_dim]
-        batch : torch.Tensor, optional
-            Batch vector of shape [num_nodes] to identify node batch assignments
-            Only used if x is static
-        return_attention : bool, optional
-            Whether to return attention weights
-            
-        Returns:
-        --------
-        torch.Tensor
-            Output features of shape [batch_size, output_dim]
-        dict, optional
-            Attention weights if return_attention=True
-        """
         # Check if input is dynamic or static
         is_dynamic = len(x.shape) == 4
         
@@ -267,33 +217,8 @@ class STAN(nn.Module):
                 return output
 
 class DynamicSTAN(nn.Module):
-    """
-    Dynamic version of STAN for handling time series of brain graphs.
-    
-    This module processes a sequence of brain graphs and applies
-    spatio-temporal attention to identify important regions and time points.
-    """
-    
     def __init__(self, hidden_dim, num_time_points, output_dim=1,
                  lstm_layers=1, bidirectional=True, dropout=0.1):
-        """
-        Initialize the Dynamic STAN module.
-        
-        Parameters:
-        -----------
-        hidden_dim : int
-            Dimension of hidden features
-        num_time_points : int
-            Number of time points
-        output_dim : int, optional
-            Dimension of output features
-        lstm_layers : int, optional
-            Number of LSTM layers
-        bidirectional : bool, optional
-            Whether to use bidirectional LSTM
-        dropout : float, optional
-            Dropout probability
-        """
         super(DynamicSTAN, self).__init__()
         
         # LSTM for processing temporal information
@@ -318,27 +243,6 @@ class DynamicSTAN(nn.Module):
         )
     
     def forward(self, x, batch=None, return_attention=False):
-        """
-        Forward pass through the Dynamic STAN module.
-        
-        Parameters:
-        -----------
-        x : torch.Tensor or list
-            Input features
-            If tensor: shape [batch_size, num_time_points, hidden_dim]
-            If list: list of tensors, each of shape [num_nodes, hidden_dim]
-        batch : torch.Tensor or list, optional
-            Batch vector or list of batch vectors
-        return_attention : bool, optional
-            Whether to return attention weights
-            
-        Returns:
-        --------
-        torch.Tensor
-            Output features of shape [batch_size, output_dim]
-        dict, optional
-            Attention weights if return_attention=True
-        """
         # Handle list input (e.g., from dynamic brain graphs)
         if isinstance(x, list):
             # Convert list of graph node features to tensor
