@@ -251,9 +251,9 @@ def run_ablation_study(graphs, labels, use_stan=False):
         print(f"\n--- Fold {fold+1} ---")
         
         # Initialize model (GNN only)
-        from src.models.gnn import GNNWithPooling
+        from src.models.gnn import StableGNNWithPooling
         
-        model = GNNWithPooling(
+        model = StableGNNWithPooling(
             num_node_features=num_node_features,
             hidden_channels=32,  # Reduced from 64 to avoid potential instability
             output_channels=1,

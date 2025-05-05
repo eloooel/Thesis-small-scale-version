@@ -10,7 +10,7 @@ import torch.nn.functional as F
 import numpy as np
 import matplotlib.pyplot as plt
 import os
-from .gnn import GNN, GNNWithPooling
+from .gnn import GNN, StableGNNWithPooling
 from .stan import STAN, DynamicSTAN
 
 class GNN_STAN(nn.Module):
