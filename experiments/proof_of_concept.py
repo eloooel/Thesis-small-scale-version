@@ -67,7 +67,7 @@ def test_stable_gnn_component(num_subjects=6):
     sys.path.append("src/models")  # Add models directory to path if needed
     
     # Use the StableGNNWithPooling model we just created
-    from src.improved_gnn import StableGNNWithPooling
+    from src.models.gnn import StableGNNWithPooling
     
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model = StableGNNWithPooling(

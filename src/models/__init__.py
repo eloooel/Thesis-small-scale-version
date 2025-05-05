@@ -8,7 +8,7 @@ from .gnn_stan import GNN_STAN, GNN_STAN_Classifier
 
 __all__ = [
     'GNN', 
-    'GNNWithPooling',
+    'StableGNNWithPooling',
     'STAN', 
     'DynamicSTAN',
     'GNN_STAN', 
